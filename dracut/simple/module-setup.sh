@@ -14,4 +14,5 @@ install() {
     inst_multiple \
         sfdisk \
         mkswap
+    hostonly='' instmods dm-thin-pool
 }

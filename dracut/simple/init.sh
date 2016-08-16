@@ -6,60 +6,62 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 mount -t devtmpfs devtmpfs /dev
 
-if [ -e /dev/mapper/dmroot ] ; then 
+if [ -e /dev/mapper/dmroot ] ; then
     echo "Qubes: FATAL error: /dev/mapper/dmroot already exists?!"
 fi
 
-modprobe xenblk || modprobe xen-blkfront || echo "Qubes: Cannot load Xen Block Frontend..."
+set -e
 
+modprobe xenblk || modprobe xen-blkfront || echo "Qubes: Cannot load Xen Block Frontend..."
+modprobe dm-thin-pool
+
+initialize_pool() {
+    if [ -n "$pool_dev" ]; then
+        return
+    fi
+    while ! [ -e /dev/xvdc ]; do sleep 0.1; done
+    VOLATILE_SIZE=$(cat /sys/block/xvdc/size) # sectors
+    meta_size=$(( $VOLATILE_SIZE / 512 ))
+    data_size=$(( $VOLATILE_SIZE - $meta_size ))
+    dmsetup create volatile-tmeta \
+        --table "0 $meta_size linear /dev/xvdc 0"
+    dmsetup create volatile-tdata \
+        --table "0 $data_size linear /dev/xvdc $meta_size"
+    meta_dev=$(dmsetup info -c --noheadings volatile-tmeta | cut -d : -f 2,3)
+    data_dev=$(dmsetup info -c --noheadings volatile-tdata | cut -d : -f 2,3)
+    dmsetup create volatile --addnodeoncreate --table \
+        "0 $data_size thin-pool $meta_dev $data_dev 256 0"
+    pool_dev=$(dmsetup info -c --noheadings volatile | cut -d : -f 2,3)
+}
 
 echo "Waiting for /dev/xvda* devices..."
 while ! [ -e /dev/xvda ]; do sleep 0.1; done
 
 SWAP_SIZE=$(( 1024 * 1024 * 2 )) # sectors, 1GB
 
+initialize_pool
+
+ROOT_SIZE=$(cat /sys/block/xvda/size) # sectors
 if [ `cat /sys/block/xvda/ro` = 1 ] ; then
     echo "Qubes: Doing COW setup for AppVM..."
 
-    while ! [ -e /dev/xvdc ]; do sleep 0.1; done
-    VOLATILE_SIZE=$(cat /sys/block/xvdc/size) # sectors
-    ROOT_SIZE=$(cat /sys/block/xvda/size) # sectors
-    if [ $VOLATILE_SIZE -lt $SWAP_SIZE ]; then
-        die "volatile.img smaller than 1GB, cannot continue"
-    fi
-    sfdisk -q --unit S /dev/xvdc >/dev/null <<EOF
-1,$SWAP_SIZE,S
-,,L
-EOF
-    if [ $? -ne 0 ]; then
-        echo "Qubes: failed to setup partitions on volatile device"
-        exit 1
-    fi
-    while ! [ -e /dev/xvdc1 ]; do sleep 0.1; done
-    mkswap /dev/xvdc1
-    while ! [ -e /dev/xvdc2 ]; do sleep 0.1; done
-
-    echo "0 `cat /sys/block/xvda/size` snapshot /dev/xvda /dev/xvdc2 N 16" | \
-        dmsetup create dmroot || { echo "Qubes: FATAL: cannot create dmroot!"; exit 1; }
-    echo Qubes: done.
+    dmsetup message volatile 0 "create_thin 0"
+    dmsetup create dmroot \
+        --table "0 $ROOT_SIZE thin $pool_dev 0 /dev/xvda"
 else
     echo "Qubes: Doing R/W setup for TemplateVM..."
-    while ! [ -e /dev/xvdc ]; do sleep 0.1; done
-    sfdisk -q --unit S /dev/xvdc >/dev/null <<EOF
-1,$SWAP_SIZE,S
-EOF
-    if [ $? -ne 0 ]; then
-        die "Qubes: failed to setup partitions on volatile device"
-    fi
-    while ! [ -e /dev/xvdc1 ]; do sleep 0.1; done
-    mkswap /dev/xvdc1
-    echo "0 `cat /sys/block/xvda/size` linear /dev/xvda 0" | \
-        dmsetup create dmroot || { echo "Qubes: FATAL: cannot create dmroot!"; exit 1; }
-    echo Qubes: done.
+    dmsetup create dmroot \
+        --table "0 $ROOT_SIZE linear /dev/xvda 0"
 fi
-dmsetup mknodes dmroot
+dmsetup message volatile 0 "create_thin 16"
+dmsetup create dmswap \
+    --table "0 $SWAP_SIZE thin $pool_dev 16"
+dmsetup mknodes dmroot dmswap
+mkswap /dev/mapper/dmswap
 
-modprobe ext4
+echo Qubes: done.
+
+modprobe ext4 || :
 
 mkdir -p /sysroot
 mount /dev/mapper/dmroot /sysroot -o ro
