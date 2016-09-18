@@ -20,6 +20,7 @@ Requires:	ImageMagick
 Requires:	pycairo
 BuildRequires:  qubes-libvchan-devel
 BuildRequires:  python-setuptools
+BuildRequires:  pkg-config
 
 %description
 Common Linux files for Qubes Dom0 and VM
