@@ -1,5 +1,5 @@
 sudo: required
-dist: trusty
+dist: xenial
 language: python
 python:
   - '2.7'
@@ -8,15 +8,15 @@ install:
  - test -n "$TESTS_ONLY" || git clone https://github.com/QubesOS/qubes-builder ~/qubes-builder
 script:
  - test -z "$TESTS_ONLY" || python -m unittest discover -v imgconverter -p test.py
- - test -n "$TESTS_ONLY" || ~/qubes-builder/scripts/travis-build
+ - test -n "$TESTS_ONLY" || GIT_URL_builder_rpm=https://github.com/marmarek/qubes-builder-rpm BRANCH_builder_rpm=travis NO_CHECK=1 ~/qubes-builder/scripts/travis-build
 env:
  - DIST_DOM0=fc25 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
  - DISTS_VM=fc27 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
  - DISTS_VM=fc28 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
- - DISTS_VM=fc29 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
+ - DISTS_VM=fc29 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1 USE_DIST_BUILD_TOOLS=1
  - DISTS_VM=jessie USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
- - DISTS_VM=stretch USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
- - DISTS_VM=buster USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
+ - DISTS_VM=stretch USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1 USE_DIST_BUILD_TOOLS=1
+ - DISTS_VM=buster USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1 USE_DIST_BUILD_TOOLS=1
  - DISTS_VM=centos7 USE_QUBES_REPO_VERSION=4.0 USE_QUBES_REPO_TESTING=1
 
 jobs:
